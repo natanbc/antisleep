@@ -1,0 +1,13 @@
+# The configuration is searched in `$WORKING_DIR/config.toml` and `$EXE_DIR/config.toml`,
+# the first one found is used. If neither exists, a default config of
+#
+#    ip = '127.0.0.1'
+#
+# is used.
+
+# IP to listen on, required
+ip = '127.0.0.1'
+# Port to listen on, defaults to 5678
+# port = 5678
+# Password for commands that modify state, if empty or missing no password is required
+# password = 'hunter2'
