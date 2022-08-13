@@ -75,6 +75,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde-strz",
+ "serde_json",
  "tide",
  "toml",
  "windows",

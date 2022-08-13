@@ -45,6 +45,10 @@ impl State {
         wakers.join(", ")
     }
 
+    fn list_wakers_json(&self) -> String {
+        serde_json::to_string(&self.wakers).unwrap()
+    }
+
     fn keep_awake(&mut self, name: String) -> String {
         let is_first = self.wakers.is_empty();
         loop {
@@ -123,18 +127,24 @@ async fn main() -> tide::Result<()> {
         password: cfg.password,
     })));
 
-    app.at("/wakers").get(|req: tide::Request<Arc<Mutex<State>>>| async move {
-        #[derive(serde::Deserialize)]
-        struct WakersParams {
-            password: Option<String>,
+    let wakers_route = |map: fn(&State) -> String| {
+        move |req: tide::Request<Arc<Mutex<State>>>| async move {
+            #[derive(serde::Deserialize)]
+            struct WakersParams {
+                password: Option<String>,
+            }
+            let params: WakersParams = req.query()?;
+
+            let state = req.state().lock().unwrap();
+            state.check_password(params.password)?;
+
+            Ok(map(&state))
         }
-        let params: WakersParams = req.query()?;
+    };
 
-        let state = req.state().lock().unwrap();
-        state.check_password(params.password)?;
+    app.at("/wakers").get(wakers_route(State::list_wakers));
 
-        Ok(state.list_wakers())
-    });
+    app.at("/wakers/json").get(wakers_route(State::list_wakers_json));
 
     app.at("/keep-awake").post(|req: tide::Request<Arc<Mutex<State>>>| async move {
         #[derive(serde::Deserialize)]
