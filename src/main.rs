@@ -1,27 +1,19 @@
 #![windows_subsystem = "windows"]
 
+extern crate core;
+
 use std::collections::hash_map::Entry;
 use rand::{thread_rng, Rng};
 use rand::distributions::Alphanumeric;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tide::{Response, StatusCode};
-use windows::Win32::System::Power::{ES_CONTINUOUS, ES_SYSTEM_REQUIRED, SetThreadExecutionState};
 
-fn set_sleep_state(allow: bool) -> bool {
-    let mut state = ES_CONTINUOUS;
-    if !allow {
-        state |= ES_SYSTEM_REQUIRED;
-    }
-    let res = unsafe {
-        SetThreadExecutionState(state)
-    };
-    return res.0 != 0;
-}
+mod request;
+use request::PowerRequest;
 
-#[derive(Clone)]
 struct State {
-    wakers: HashMap<String, String>,
+    wakers: HashMap<String, PowerRequest>,
     password: Option<String>,
 }
 
@@ -40,17 +32,20 @@ impl State {
     }
 
     fn list_wakers(&self) -> String {
-        let mut wakers = self.wakers.values().map(|s| &**s).collect::<Vec<_>>();
+        let mut wakers = self.wakers.values().map(|r| r.reason()).collect::<Vec<_>>();
         wakers.sort_by(|a, b| a.cmp(b));
         wakers.join(", ")
     }
 
     fn list_wakers_json(&self) -> String {
-        serde_json::to_string(&self.wakers).unwrap()
+        let mut map = HashMap::new();
+        for (k, v) in self.wakers.iter() {
+            map.insert(k, v.reason());
+        }
+        serde_json::to_string(&map).unwrap()
     }
 
     fn keep_awake(&mut self, name: String) -> String {
-        let is_first = self.wakers.is_empty();
         loop {
             let id: String = thread_rng()
                 .sample_iter(&Alphanumeric)
@@ -61,25 +56,20 @@ impl State {
             if let Entry::Occupied(_) = &entry {
                 continue;
             }
-            if is_first {
-                log::info!("Disabling sleep");
-                set_sleep_state(false);
-            }
-            entry.or_insert(name);
+            let req = entry.or_insert(PowerRequest::new(name));
+            req.enter();
             return id;
         }
     }
 
     fn task_done(&mut self, id: String) -> Option<String> {
-        let v = self.wakers.remove(&id);
-        if v.is_none() {
-            return v;
+        match self.wakers.remove(&id) {
+            None => None,
+            Some(mut req) => {
+                req.leave();
+                Some(req.reason().to_string())
+            }
         }
-        if self.wakers.is_empty() {
-            log::info!("No more wakers left, turning sleep back on");
-            set_sleep_state(true);
-        }
-        return v;
     }
 }
 
